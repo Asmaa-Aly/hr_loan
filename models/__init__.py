@@ -1,0 +1,2 @@
+import hr_loan
+import hr_payroll

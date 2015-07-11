@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<openerp>
+	<data>
+
+		<record id="hr_payslip_form_inherit_view" model="ir.ui.view">
+			<field name="name">hr.payslip.inherit.form</field>
+			<field name="model">hr.payslip</field>
+			<field name="inherit_id" ref="hr_payroll.view_hr_payslip_form"/>
+			<field name="arch" type="xml">
+				<xpath expr="//page[@string='Salary Computation']" position="after">
+					<page string="Loans">
+						<button name="get_loan" string="Update Loans" type="object"/>
+						<field name="loan_ids">
+							<tree string="Loans" editable="bottom">
+								<field name="loan_id"/>
+								<field name="paid_date"/>
+								<field name="paid_amount"/>
+								<field name="paid"/>
+								<field name="notes"/>
+								<!--button name="action_paid_amount" icon="gtk-execute" string="Pay Amount" type="object"/-->
+							</tree>
+						</field>
+						<group class="oe_subtotal_footer oe_right">
+							<field name="total_amount_paid"/>
+						</group>
+					</page>
+				</xpath>
+			</field>
+		</record>
+	</data>
+</openerp>

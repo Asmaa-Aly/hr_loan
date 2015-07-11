@@ -1,0 +1,9 @@
+.openerp div.oe_loans {
+  position: absolute;
+  margin-top: 16px;
+  font-size: 14px;
+}
+.openerp .oe_loans > a > span:hover {
+  margin: 4px 0;
+  text-decoration: underline;
+}
