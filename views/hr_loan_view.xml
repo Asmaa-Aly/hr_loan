@@ -37,9 +37,9 @@
 			<field name="arch" type="xml">
 				<form string="Loan Request">
 					<header>
-						<button name="action_approve" type="object" string="Approve" states="draft"/>
-						<button name="action_set_to_draft" type="object" string="Set To Draft" states="approve"/>
-						<button name="action_refuse" type="object" string="Refuse" states="draft"/>
+						<button name="action_approve" type="object" string="Approve" states="draft" class="oe_highlight"/>
+						<button name="action_set_to_draft" type="object" string="Set To Draft" states="approve" class="oe_highlight"/>
+						<button name="action_refuse" type="object" string="Refuse" states="draft" class="oe_highlight"/>
 						<field name="state" widget="statusbar" statusbar_visible="draft,open,paid" statusbar_colors='{"proforma":"blue","proforma2":"blue"}'/>
 					</header>
 					
@@ -118,7 +118,6 @@
 		
 		<!--loan menu-->
 		<menuitem name="Loans"
-			parent="hr.menu_hr_root"
 			id="menu_hr_loans"
 			sequence="20"/>
 		
@@ -129,7 +128,12 @@
 		</record>
 		
 		<menuitem name="Loan Requests"
-			parent="menu_hr_loans"
+			id="menu_base_hr_loan_request"
+			parent = "menu_hr_loans"
+			sequence="20"/>
+			
+		<menuitem name="Loan Requests"
+			parent="menu_base_hr_loan_request"
 			id="menu_hr_loan_request"
 			action="action_hr_loan_request"/>
 		
@@ -147,7 +151,7 @@
 		</record>	
 			
 		<!-- HR employee inherit Loans -->
-		<record id="view_employee_form_loan_inherit" model="ir.ui.view">
+		<!--record id="view_employee_form_loan_inherit" model="ir.ui.view">
 			<field name="name">hr.employee.loan.form.inherit</field>
 			<field name="model">hr.employee</field>
 			<field name="inherit_id" ref="hr.view_employee_form"/>
@@ -170,7 +174,7 @@
 					</button>
 				</xpath>
 			</field>
-		</record>
+		</record-->
 
 		
 	</data>

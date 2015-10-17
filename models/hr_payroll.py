@@ -23,7 +23,8 @@ class hr_payslip(models.Model):
 		array = []
 		loan_ids = self.env['hr.loan.line'].search([('employee_id','=',self.employee_id.id),('paid','=',False)])	
 		for loan in loan_ids:
-			array.append(loan.id)
+			if loan.loan_id.state == 'approve':
+				array.append(loan.id)
 		self.loan_ids = array
 		return array
 		

@@ -6,15 +6,6 @@
 			Sequence Type
 		-->
 		
-		<record id="ir_seq_type_hr_loan" model="ir.sequence.type">
-			<field name="name">Loan Request</field>
-			<field name="code">hr.loan.req</field>
-		</record>
-		
-		<!--
-			Sequence
-		-->
-		
 		<record id="ir_seq_hr_loan" model="ir.sequence">
 			<field name="name">Loan Request</field>
 			<field name="code">hr.loan.req</field>
@@ -24,6 +15,9 @@
 			<field name="number_next_actual">1</field>
 			<field name="implementation">standard</field>
 		</record>
+		
+		
+		
 		
 	</data>
 </openerp>

@@ -2,6 +2,7 @@ from openerp import models, fields, api
 from openerp.exceptions import except_orm, Warning, RedirectWarning
 from datetime import date, datetime, timedelta
 from dateutil.relativedelta import relativedelta
+import time
 
 class hr_loan(models.Model):
 	_name = 'hr.loan'
@@ -26,7 +27,7 @@ class hr_loan(models.Model):
 	@api.one
 	def _get_old_loan(self):
 		old_amount = 0.00
-		for loan in self.search([('employee_id','=',self.employee_id.id)]):
+		for loan in self.search([('employee_id','=',self.employee_id.id), ('state','=','approve')]):
 			if loan.id != self.id:
 				old_amount += loan.balance_amount
 		self.loan_old_amount = old_amount
@@ -65,20 +66,20 @@ class hr_loan(models.Model):
 		res = super(hr_loan, self).create(values)
 		return res
 	
-	@api.one
+	@api.multi
 	def action_refuse(self):
-		self.state = 'refuse'
+		return self.write({'state': 'refuse'})
 		
 		
-	@api.one
+	@api.multi
 	def action_set_to_draft(self):
-		self.state = 'draft'
+		return self.write({'state': 'draft'})
 	
 	@api.multi	
 	def onchange_employee_id(self, employee_id=False):
 		old_amount = 0.00
 		if employee_id:
-			for loan in self.search([('employee_id','=',employee_id)]):
+			for loan in self.search([('employee_id','=',employee_id), ('state','=','approve')]):
 				if loan.id != self.id:
 					old_amount += loan.balance_amount
 			return {
@@ -86,68 +87,70 @@ class hr_loan(models.Model):
 					'loan_old_amount':old_amount}
 			}
 	
-	@api.one
+	@api.multi
 	def action_approve(self):
-		self.state = 'approve'
+		self.write({'state': 'approve'})
 		if not self.emp_account_id or not self.treasury_account_id or not self.journal_id:
 			raise except_orm('Warning', "You must enter employee account & Treasury account and journal to approve ")
 		if not self.loan_line_ids:
 			raise except_orm('Warning', 'You must compute Loan Request before Approved')
+		
 		can_close = False
 		loan_obj = self.env['hr.loan']
-		period_obj = self.env['account.period']
 		move_obj = self.env['account.move']
 		move_line_obj = self.env['account.move.line']
 		currency_obj = self.env['res.currency']
-		created_move_ids = []
-		loan_ids = []
+		timenow = time.strftime('%Y-%m-%d')
+		line_ids = []
+		debit_sum = 0.0
+		credit_sum = 0.0
 		for loan in self:
-			loan_request_date = loan.date
-			period_ids =period_obj.with_context().find(loan_request_date).id
 			company_currency = loan.employee_id.company_id.currency_id.id
 			current_currency = self.env.user.company_id.currency_id.id
 			amount = loan.loan_amount
 			loan_name = loan.employee_id.name
 			reference = loan.name
 			journal_id = loan.journal_id.id
-			move_vals = {
-				'name': loan_name,
-				'date': loan_request_date,
+			move = {
+				'narration': loan_name,
 				'ref': reference,
-				'period_id': period_ids or False,
 				'journal_id': journal_id,
+				'date': timenow,
 				'state': 'posted',
-				}
-			move_id = move_obj.create(move_vals)
-			move_line_vals = {
-				'name': loan_name,
-				'ref': reference,
-				'move_id': move_id.id,
-				'account_id': loan.treasury_account_id.id,
-				'debit': 0.0,
-				'credit': amount,
-				'period_id': period_ids or False,
-				'journal_id': journal_id,
-				'currency_id': company_currency != current_currency and  current_currency or False,
-				'amount_currency':  0.0,
-				'date': loan_request_date,
 			}
-			move_line_obj.create(move_line_vals)
-			move_line_vals2 = {
-				'name': loan_name,
-				'ref': reference,
-				'move_id': move_id.id,
-				'account_id': loan.emp_account_id.id,
-				'credit': 0.0,
-				'debit': amount,
-				'period_id': period_ids or False,
-				'journal_id': journal_id,
-				'currency_id': company_currency != current_currency and  current_currency or False,
-				'amount_currency': 0.0,
-				'date': loan_request_date,
-			}
-			move_line_obj.create(move_line_vals2)
-			self.write({'move_id': move_id.id})
+			
+			debit_account_id = loan.treasury_account_id.id
+			credit_account_id = loan.emp_account_id.id
+			
+			if debit_account_id:
+				debit_line = (0, 0, {
+					'name': loan_name,
+					'account_id': debit_account_id,
+					'journal_id': journal_id,
+					'date': timenow,
+					'debit': amount > 0.0 and amount or 0.0,
+					'credit': amount < 0.0 and -amount or 0.0,
+				})
+				line_ids.append(debit_line)
+				debit_sum += debit_line[2]['debit'] - debit_line[2]['credit']
+			
+			if credit_account_id:
+				credit_line = (0, 0, {
+					'name': loan_name,
+					'account_id': credit_account_id,
+					'journal_id': journal_id,
+					'date': timenow,
+					'debit': amount < 0.0 and -amount or 0.0,
+					'credit': amount > 0.0 and amount or 0.0,
+				})
+				line_ids.append(credit_line)
+				credit_sum += credit_line[2]['credit'] - credit_line[2]['debit']
+			
+			move.update({'line_ids': line_ids})
+			move_id = move_obj.create(move)
+			
+			return self.write({'move_id': move_id.id})
+			
 		return True
 	
 		
@@ -209,63 +212,69 @@ class hr_loan_line(models.Model):
 		context = self._context
 		can_close = False
 		loan_obj = self.env['hr.loan']
-		period_obj = self.env['account.period']
 		move_obj = self.env['account.move']
 		move_line_obj = self.env['account.move.line']
 		currency_obj = self.env['res.currency']
 		created_move_ids = []
 		loan_ids = []
+		timenow = time.strftime('%Y-%m-%d')
+		line_ids = []
+		debit_sum = 0.0
+		credit_sum = 0.0
+		
 		for line in self:
 			if line.loan_id.state != 'approve':
 				raise except_orm('Warning', "Loan Request must be approved")
 			paid_date = line.paid_date
-			period_ids =period_obj.with_context().find(paid_date).id
 			company_currency = line.employee_id.company_id.currency_id.id
 			current_currency = self.env.user.company_id.currency_id.id
 			amount = line.paid_amount
 			loan_name = line.employee_id.name
 			reference = line.loan_id.name
 			journal_id = line.loan_id.journal_id.id
-			move_vals = {
-				'name': loan_name,
-				'date': paid_date,
+			move = {
+				'narration': loan_name,
 				'ref': reference,
-				'period_id': period_ids or False,
 				'journal_id': journal_id,
+				'date': timenow,
 				'state': 'posted',
-				}
-			move_id = move_obj.create(move_vals)
-			move_line_vals = {
-				'name': loan_name,
-				'ref': reference,
-				'move_id': move_id.id,
-				'account_id': line.loan_id.emp_account_id.id,
-				'debit': 0.0,
-				'credit': amount,
-				'period_id': period_ids or False,
-				'journal_id': journal_id,
-				'currency_id': company_currency != current_currency and  current_currency or False,
-				'amount_currency':  0.0,
-				'date': paid_date,
-				'loan_id':line.loan_id.id,
 			}
-			move_line_obj.create(move_line_vals)
-			move_line_vals2 = {
-				'name': loan_name,
-				'ref': reference,
-				'move_id': move_id.id,
-				'account_id': line.loan_id.treasury_account_id.id,
-				'credit': 0.0,
-				'debit': amount,
-				'period_id': period_ids or False,
-				'journal_id': journal_id,
-				'currency_id': company_currency != current_currency and  current_currency or False,
-				'amount_currency': 0.0,
-				'date': paid_date,
-				'loan_id':line.loan_id.id,
-			}
-			move_line_obj.create(move_line_vals2)
-			self.write({'paid': True})
+			
+			debit_account_id = line.loan_id.treasury_account_id.id
+			credit_account_id = line.loan_id.emp_account_id.id
+			
+			
+			if debit_account_id:
+				debit_line = (0, 0, {
+					'name': loan_name,
+					'account_id': debit_account_id,
+					'journal_id': journal_id,
+					'date': timenow,
+					'debit': amount > 0.0 and amount or 0.0,
+					'credit': amount < 0.0 and -amount or 0.0,
+					'loan_id':line.loan_id.id,
+				})
+				line_ids.append(debit_line)
+				debit_sum += debit_line[2]['debit'] - debit_line[2]['credit']
+
+			
+			
+			if credit_account_id:
+				credit_line = (0, 0, {
+					'name': loan_name,
+					'account_id': credit_account_id,
+					'journal_id': journal_id,
+					'date': timenow,
+					'debit': amount < 0.0 and -amount or 0.0,
+					'credit': amount > 0.0 and amount or 0.0,
+					'loan_id':line.loan_id.id,
+				})
+				line_ids.append(credit_line)
+				credit_sum += credit_line[2]['credit'] - credit_line[2]['debit']
+			
+			move.update({'line_ids': line_ids})
+			move_id = move_obj.create(move)
+			return self.write({'paid': True})
 		return True
 		
 	
